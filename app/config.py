@@ -18,14 +18,19 @@ SERVER_HOST = os.getenv("HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("PORT", "8000"))
 
 # WhatsApp Web Configuration
-WHATSAPP_WEB_URL = "https://web.whatsapp.com"
-USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/133.0.0.0 Safari/537.36"
-)
+def get_session_user_agent(session_id: str) -> str:
+    """Generate a realistic, distinct User-Agent per session to prevent device collision."""
+    # Deterministic minor version variation based on session_id
+    hash_seed = sum(ord(c) for c in session_id) % 20
+    build_num = 6943 + hash_seed
+    patch_num = 100 + hash_seed
+    return (
+        f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        f"AppleWebKit/537.36 (KHTML, like Gecko) "
+        f"Chrome/133.0.{build_num}.{patch_num} Safari/537.36"
+    )
 
-# Playwright launch arguments for maximum stealth and stability
+# Playwright launch arguments for maximum stealth, isolation, and minimal RAM
 PLAYWRIGHT_ARGS = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
@@ -35,4 +40,13 @@ PLAYWRIGHT_ARGS = [
     "--no-zygote",
     "--disable-gpu",
     "--disable-blink-features=AutomationControlled",
+    "--disable-extensions",
+    "--disable-default-apps",
+    "--mute-audio",
+    "--no-default-browser-check",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--disable-ipc-flooding-protection",
+    "--js-flags=--max-old-space-size=256",
 ]

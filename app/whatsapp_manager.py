@@ -30,8 +30,8 @@ from app.config import (
     SESSIONS_META_FILE,
     DEFAULT_HEADLESS,
     WHATSAPP_WEB_URL,
-    USER_AGENT,
     PLAYWRIGHT_ARGS,
+    get_session_user_agent,
 )
 from app.models import SessionStatusEnum
 from app.database import db_manager
@@ -115,11 +115,23 @@ class WhatsAppSession:
             logger.info(f"Starting session {self.session_id} (Headless: {self.headless})...")
             self._playwright = await async_playwright().start()
 
+            # Dedicated isolated directories per session to prevent any data collisions
+            cache_dir = self.user_data_dir.parent / "cache"
+            crash_dir = self.user_data_dir.parent / "crashes"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            crash_dir.mkdir(parents=True, exist_ok=True)
+
+            session_ua = get_session_user_agent(self.session_id)
+            session_args = list(PLAYWRIGHT_ARGS) + [
+                f"--disk-cache-dir={str(cache_dir.resolve())}",
+                f"--crash-dumps-dir={str(crash_dir.resolve())}",
+            ]
+
             self._context = await self._playwright.chromium.launch_persistent_context(
                 user_data_dir=str(self.user_data_dir.resolve()),
                 headless=self.headless,
-                user_agent=USER_AGENT,
-                args=PLAYWRIGHT_ARGS,
+                user_agent=session_ua,
+                args=session_args,
                 viewport={"width": 1280, "height": 800},
                 accept_downloads=False,
                 bypass_csp=True,
@@ -243,22 +255,41 @@ class WhatsAppSession:
                     await asyncio.sleep(2)
                     continue
 
-                # 3. Check for loading progress bar / "Starting chat" / "Loading chats"
+                # 3. Check for "WhatsApp is open in another window" / "Use Here" dialog
+                use_here_btn = await self._page.query_selector(
+                    'button:has-text("Use Here"), '
+                    'button:has-text("استخدام هنا"), '
+                    'div[role="button"]:has-text("Use Here"), '
+                    'div[role="button"]:has-text("استخدام هنا")'
+                )
+                if use_here_btn and await use_here_btn.is_visible():
+                    logger.info(f"Session {self.session_id}: Detected 'Use Here' prompt. Reclaiming active session...")
+                    try:
+                        await use_here_btn.click()
+                        await asyncio.sleep(2)
+                        continue
+                    except Exception:
+                        pass
+
+                # 4. Check for loading progress bar / "Starting chat" / "Loading chats"
                 loading_elem = await self._page.query_selector('progress, [data-testid="startup-progress"]')
                 if loading_elem:
                     self.status = SessionStatusEnum.LOGGING_IN
                     await asyncio.sleep(2)
                     continue
 
-                # 4. Check for logged out / unlinked notification
-                logged_out_dialog = await self._page.query_selector(
-                    'div:has-text("You have been logged out"), div:has-text("Device was logged out")'
-                )
-                if logged_out_dialog:
-                    logger.warning(f"Session {self.session_id} was logged out.")
-                    self.status = SessionStatusEnum.DISCONNECTED
-                    await asyncio.sleep(4)
-                    continue
+                # 5. Check for true unlinked / logged out notification (ignore if Use Here button exists)
+                if not use_here_btn:
+                    logged_out_dialog = await self._page.query_selector(
+                        'div[data-animate-modal-popup="true"]:has-text("Device was logged out"), '
+                        'div[data-animate-modal-popup="true"]:has-text("You have been logged out"), '
+                        'div[role="dialog"]:has-text("Logged out")'
+                    )
+                    if logged_out_dialog and await logged_out_dialog.is_visible():
+                        logger.warning(f"Session {self.session_id} was logged out from device.")
+                        self.status = SessionStatusEnum.DISCONNECTED
+                        await asyncio.sleep(4)
+                        continue
 
             except asyncio.CancelledError:
                 break
