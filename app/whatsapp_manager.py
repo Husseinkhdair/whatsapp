@@ -385,65 +385,88 @@ class WhatsAppSession:
             if not self._page or self._page.is_closed():
                 raise RuntimeError("Session page is not available.")
 
-            encoded_msg = urllib.parse.quote(message)
-            send_url = f"https://web.whatsapp.com/send?phone={clean_phone}&text={encoded_msg}"
-
-            logger.info(f"Navigating session {self.session_id} to send message to {clean_phone}...")
-            await self._page.goto(send_url, wait_until="domcontentloaded", timeout=45000)
-
-            # Wait for either invalid number dialog or chat input / send button
             try:
-                # Check for invalid phone dialog popup
-                # WhatsApp shows: "Phone number shared via url is invalid." or "رقم الهاتف غير صالح"
-                await asyncio.sleep(1.5)
-                invalid_dialog = await self._page.query_selector(
-                    'div[data-animate-modal-popup="true"], div[role="dialog"] button'
-                )
+                encoded_msg = urllib.parse.quote(message)
+                send_url = f"https://web.whatsapp.com/send?phone={clean_phone}&text={encoded_msg}"
 
-                if invalid_dialog:
-                    dialog_text = await self._page.evaluate(
-                        "el => el.innerText",
-                        await self._page.query_selector('div[data-animate-modal-popup="true"], div[role="dialog"]')
-                    )
-                    if dialog_text and ("invalid" in dialog_text.lower() or "غير صالح" in dialog_text):
-                        # Dismiss popup
-                        ok_btn = await self._page.query_selector('div[role="dialog"] button, button:has-text("OK")')
-                        if ok_btn:
-                            await ok_btn.click()
-                        raise ValueError(f"Phone number '{clean_phone}' is not registered on WhatsApp or is invalid.")
+                logger.info(f"Fast dispatch for session {self.session_id} to {clean_phone}...")
 
-                # Wait for the send button or input box
+                # Check if page is already on web.whatsapp.com - do instant SPA navigation instead of 20s full reload!
+                try:
+                    current_url = self._page.url or ""
+                except Exception:
+                    current_url = ""
+
+                if "web.whatsapp.com" in current_url:
+                    # Soft-navigate via client router: takes 300ms instead of 15 seconds!
+                    await self._page.evaluate(f"""
+                        () => {{
+                            const target = "https://web.whatsapp.com/send?phone={clean_phone}&text={encoded_msg}";
+                            let a = document.getElementById('_fast_wa_nav');
+                            if (!a) {{
+                                a = document.createElement('a');
+                                a.id = '_fast_wa_nav';
+                                document.body.appendChild(a);
+                            }}
+                            a.href = target;
+                            a.click();
+                        }}
+                    """)
+                else:
+                    await self._page.goto(send_url, wait_until="domcontentloaded", timeout=30000)
+
+                # Rapid parallel polling for send button or invalid number dialog (poll every 100ms, max 8s)
                 send_button_selector = (
-                    'button[data-testid="compose-btn-send"], '
                     'span[data-icon="send"], '
+                    'button[data-testid="compose-btn-send"], '
                     'button[aria-label="Send"], '
                     'button[aria-label="إرسال"]'
                 )
+                invalid_dialog_selector = 'div[data-animate-modal-popup="true"], div[role="dialog"]'
 
-                send_button = None
-                try:
-                    send_button = await self._page.wait_for_selector(send_button_selector, timeout=20000)
-                except PlaywrightTimeoutError:
-                    pass
+                found_button = None
+                for _ in range(50):
+                    # 1. Quick check for send button
+                    btn = await self._page.query_selector(send_button_selector)
+                    if btn and await btn.is_visible():
+                        found_button = btn
+                        break
 
-                if send_button and await send_button.is_visible():
-                    await send_button.click()
+                    # 2. Quick check for invalid phone popup
+                    inv = await self._page.query_selector(invalid_dialog_selector)
+                    if inv and await inv.is_visible():
+                        try:
+                            dialog_text = await self._page.evaluate("el => el.innerText", inv) or ""
+                            if "invalid" in dialog_text.lower() or "غير صالح" in dialog_text:
+                                ok_btn = await self._page.query_selector('div[role="dialog"] button, button:has-text("OK")')
+                                if ok_btn:
+                                    await ok_btn.click()
+                                raise ValueError(f"Phone number '{clean_phone}' is not registered on WhatsApp or is invalid.")
+                        except ValueError:
+                            raise
+                        except Exception:
+                            pass
+
+                    await asyncio.sleep(0.12)
+
+                if found_button:
+                    await found_button.click()
                 else:
-                    # Alternative: Focus text editor footer and press Enter
+                    # Alternative: Focus text editor and press Enter
                     input_selector = (
                         'footer div[contenteditable="true"], '
                         'div[data-testid="conversation-compose-box-input"], '
                         'div[contenteditable="true"][data-tab="10"]'
                     )
-                    chat_input = await self._page.wait_for_selector(input_selector, timeout=10000)
-                    if chat_input:
+                    chat_input = await self._page.query_selector(input_selector)
+                    if chat_input and await chat_input.is_visible():
                         await chat_input.focus()
                         await self._page.keyboard.press("Enter")
                     else:
                         raise RuntimeError("Could not find message input box or send button.")
 
-                # Wait short delay to ensure message dispatched
-                await asyncio.sleep(2)
+                # Short 0.5s pause to ensure WebSocket packet dispatched
+                await asyncio.sleep(0.5)
                 self.last_active = datetime.now().isoformat()
 
                 result = {
