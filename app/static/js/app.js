@@ -512,27 +512,43 @@ function updateDbNavbarBadge(isConnected) {
 }
 
 async function openDbModal() {
-    await fetchDbStatus();
+    openModal("modal-db");
     const banner = document.getElementById("db-status-banner");
     const input = document.getElementById("mongo-uri-input");
 
     if (currentDbData) {
         input.value = currentDbData.raw_uri || "";
-        if (currentDbData.is_connected) {
-            banner.style.background = "rgba(37, 211, 102, 0.15)";
-            banner.style.border = "1px solid rgba(37, 211, 102, 0.3)";
-            banner.style.color = "#25d366";
-            banner.innerHTML = "<span>🟢</span><span><strong>متصل بنجاح:</strong> قاعدة البيانات جاهزة وتعمل على حفظ البيانات وسجلات الرسائل.</span>";
-        } else {
-            banner.style.background = "rgba(239, 68, 68, 0.15)";
-            banner.style.border = "1px solid rgba(239, 68, 68, 0.3)";
-            banner.style.color = "#ef4444";
-            const err = currentDbData.last_error ? `(${currentDbData.last_error})` : "";
-            banner.innerHTML = `<span>⚠️</span><span><strong>غير متصل:</strong> يرجى التحقق من صحة الرابط أو كلمة المرور أو صلاحيات IP في Atlas ${err}</span>`;
-        }
+        renderDbBanner(currentDbData);
+    } else {
+        banner.style.background = "rgba(134, 150, 160, 0.15)";
+        banner.style.border = "1px solid rgba(134, 150, 160, 0.3)";
+        banner.style.color = "#8696a0";
+        banner.innerHTML = "<span>⏳</span><span>جاري التحقق من حالة الاتصال...</span>";
     }
 
-    openModal("modal-db");
+    await fetchDbStatus();
+    if (currentDbData) {
+        input.value = currentDbData.raw_uri || "";
+        renderDbBanner(currentDbData);
+    }
+}
+
+function renderDbBanner(data) {
+    const banner = document.getElementById("db-status-banner");
+    if (!banner || !data) return;
+
+    if (data.is_connected) {
+        banner.style.background = "rgba(37, 211, 102, 0.15)";
+        banner.style.border = "1px solid rgba(37, 211, 102, 0.3)";
+        banner.style.color = "#25d366";
+        banner.innerHTML = "<span>🟢</span><span><strong>متصل بنجاح:</strong> قاعدة البيانات جاهزة وتعمل على حفظ البيانات وسجلات الرسائل.</span>";
+    } else {
+        banner.style.background = "rgba(239, 68, 68, 0.15)";
+        banner.style.border = "1px solid rgba(239, 68, 68, 0.3)";
+        banner.style.color = "#ef4444";
+        const err = data.last_error ? `(${data.last_error})` : "";
+        banner.innerHTML = `<span>⚠️</span><span><strong>غير متصل:</strong> يرجى التأكد من كلمة المرور في Database Access ${err}</span>`;
+    }
 }
 
 document.getElementById("db-settings-form").addEventListener("submit", async (e) => {
