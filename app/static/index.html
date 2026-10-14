@@ -367,13 +367,13 @@
             <div class="modal-body" style="max-height: 580px; overflow-y: auto;">
                 <!-- Tab Buttons -->
                 <div style="display: flex; gap: 8px; margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
-                    <button type="button" class="btn btn-sm btn-primary" id="btn-tab-otp-send" onclick="switchOtpTab('send')">
+                    <button type="button" class="btn btn-sm" id="btn-tab-otp-send" onclick="switchOtpTab('send')" style="background: #2563eb; color: #fff; border: 1px solid #2563eb; font-weight: 700; cursor: pointer;">
                         📤 إرسال وتوليد كود تلقائي
                     </button>
-                    <button type="button" class="btn btn-sm btn-secondary" id="btn-tab-otp-verify" onclick="switchOtpTab('verify')">
+                    <button type="button" class="btn btn-sm" id="btn-tab-otp-verify" onclick="switchOtpTab('verify')" style="background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); cursor: pointer;">
                         🔍 اختبار التحقق (Verify OTP)
                     </button>
-                    <button type="button" class="btn btn-sm btn-secondary" id="btn-tab-otp-docs" onclick="switchOtpTab('docs')">
+                    <button type="button" class="btn btn-sm" id="btn-tab-otp-docs" onclick="switchOtpTab('docs')" style="background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); cursor: pointer;">
                         📜 الربط البرمجي والتقارير
                     </button>
                 </div>
@@ -384,7 +384,7 @@
                         تقوم هذه البوابة بتوليد كود OTP عشوائي تلقائياً وحفظه في MongoDB، وإرساله عبر أول حساب واتساب متاح مع التبديل التلقائي إذا فشل أي حساب!
                     </p>
 
-                    <form id="otp-send-form">
+                    <form id="otp-send-form" onsubmit="event.preventDefault(); sendOtpNow();">
                         <div class="form-group">
                             <label for="otp-phone">رقم هاتف المستلم (مع المفتاح الدولي):</label>
                             <input type="text" id="otp-phone" class="form-control" placeholder="مثال: 966501234567 أو 9647701234567" required dir="ltr">
@@ -400,7 +400,7 @@
                             <textarea id="otp-custom-msg" class="form-control" rows="2" placeholder="اتركه فارغاً ليتم استخدام القالب الافتراضي مع رمز التحقق"></textarea>
                         </div>
 
-                        <button type="submit" class="btn btn-primary" id="btn-submit-otp" style="width: 100%; justify-content: center; background: #2563eb; padding: 12px; font-weight: 600;">
+                        <button type="submit" class="btn btn-primary" id="btn-submit-otp" style="width: 100%; justify-content: center; background: #2563eb; padding: 12px; font-weight: 700;">
                             ⚡ إرسال وتوليد رمز الـ OTP الآن
                         </button>
                     </form>
@@ -416,7 +416,7 @@
                         أدخل معرّف الطلب (request_id) المستلم عند الإرسال، ورمز الـ OTP المدخل من قبل المستخدم لمطابقته في قاعدة البيانات.
                     </p>
 
-                    <form id="otp-verify-form">
+                    <form id="otp-verify-form" onsubmit="event.preventDefault(); verifyOtpCode();">
                         <div class="form-group">
                             <label for="verify-req-id">معرّف الطلب (Request ID):</label>
                             <input type="text" id="verify-req-id" class="form-control" placeholder="مثال: req_1a2b3c4d5e6f" required dir="ltr" style="font-family: monospace;">
@@ -427,7 +427,7 @@
                             <input type="text" id="verify-otp-input" class="form-control" placeholder="أدخل كود الـ OTP المكون من 6 أرقام" required dir="ltr" style="font-size: 1.2rem; font-weight: 700; letter-spacing: 2px;">
                         </div>
 
-                        <button type="submit" class="btn btn-primary" id="btn-submit-verify" style="width: 100%; justify-content: center; background: #16a34a; padding: 12px; font-weight: 600;">
+                        <button type="button" onclick="verifyOtpCode()" class="btn btn-primary" id="btn-submit-verify" style="width: 100%; justify-content: center; background: #16a34a; padding: 12px; font-weight: 700;">
                             🔍 التحقق من صحة الرمز الآن
                         </button>
                     </form>
@@ -439,18 +439,43 @@
 
                 <!-- Tab 3: API Docs & Reports -->
                 <div id="otp-view-docs" style="display: none;">
-                    <h4 style="font-size: 0.95rem; margin-bottom: 8px;">1. إرسال وتوليد OTP برمجياً:</h4>
-                    <div class="code-box" id="code-otp-curl"></div>
+                    <h4 style="font-size: 0.95rem; margin-bottom: 8px;">1. إرسال وتوليد OTP برمجياً (cURL):</h4>
+                    <pre class="code-box" id="code-otp-curl">curl -X POST "http://localhost:8000/api/otp/send" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "9647700000000"
+  }'</pre>
                     <button class="btn btn-secondary btn-sm" style="margin-top: 6px;" onclick="copyCode('code-otp-curl')">📋 نسخ كود الإرسال</button>
 
                     <h4 style="font-size: 0.95rem; margin-top: 1.25rem; margin-bottom: 8px;">2. التحقق من صحة الرمز برمجياً (يرجع valid: true/false):</h4>
-                    <div class="code-box" id="code-otp-verify-curl"></div>
+                    <pre class="code-box" id="code-otp-verify-curl">curl -X POST "http://localhost:8000/api/otp/verify" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "request_id": "req_1a2b3c4d5e6f",
+    "otp": "849201"
+  }'</pre>
                     <button class="btn btn-secondary btn-sm" style="margin-top: 6px;" onclick="copyCode('code-otp-verify-curl')">📋 نسخ كود التحقق</button>
+
+                    <h4 style="font-size: 0.95rem; margin-top: 1.25rem; margin-bottom: 8px;">3. مثال بايثون (Python Requests):</h4>
+                    <pre class="code-box" id="code-otp-python">import requests
+
+# 1. إرسال وتوليد الكود
+res = requests.post("http://localhost:8000/api/otp/send", json={"phone": "9647700000000"}).json()
+request_id = res["data"]["request_id"]
+
+# 2. التحقق من الكود المدخل
+verify = requests.post("http://localhost:8000/api/otp/verify", json={
+    "request_id": request_id,
+    "otp": "849201"
+}).json()
+
+print("Valid:", verify["valid"])  # True أو False</pre>
+                    <button class="btn btn-secondary btn-sm" style="margin-top: 6px;" onclick="copyCode('code-otp-python')">📋 نسخ كود Python</button>
 
                     <div style="margin-top: 25px; border-top: 1px solid var(--border-color); padding-top: 15px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <h4 style="font-size: 0.95rem;">📜 تقارير محاولات الـ OTP السابقة (MongoDB):</h4>
-                            <button class="btn btn-secondary btn-sm" onclick="fetchOtpReports()">🔄 تحديث</button>
+                            <button class="btn btn-secondary btn-sm" onclick="fetchOtpReports()">🔄 تحديث التقارير</button>
                         </div>
                         <div id="otp-reports-table-container">
                         </div>
@@ -467,6 +492,43 @@
     <!-- Toast Notification Container -->
     <div id="toast-container"></div>
 
-    <script src="/static/js/app.js"></script>
+    <!-- Inline Tab Switcher for immediate availability -->
+    <script>
+    function switchOtpTab(tab) {
+        var btnSend = document.getElementById("btn-tab-otp-send");
+        var btnVerify = document.getElementById("btn-tab-otp-verify");
+        var btnDocs = document.getElementById("btn-tab-otp-docs");
+
+        var viewSend = document.getElementById("otp-view-send");
+        var viewVerify = document.getElementById("otp-view-verify");
+        var viewDocs = document.getElementById("otp-view-docs");
+
+        if (!btnSend || !btnVerify || !btnDocs || !viewSend || !viewVerify || !viewDocs) return;
+
+        // Reset styling
+        btnSend.style.background = (tab === 'send' ? '#2563eb' : 'transparent');
+        btnSend.style.color = (tab === 'send' ? '#fff' : 'var(--text-muted)');
+        btnSend.style.borderColor = (tab === 'send' ? '#2563eb' : 'var(--border-color)');
+
+        btnVerify.style.background = (tab === 'verify' ? '#16a34a' : 'transparent');
+        btnVerify.style.color = (tab === 'verify' ? '#fff' : 'var(--text-muted)');
+        btnVerify.style.borderColor = (tab === 'verify' ? '#16a34a' : 'var(--border-color)');
+
+        btnDocs.style.background = (tab === 'docs' ? '#38bdf8' : 'transparent');
+        btnDocs.style.color = (tab === 'docs' ? '#0f172a' : 'var(--text-muted)');
+        btnDocs.style.borderColor = (tab === 'docs' ? '#38bdf8' : 'var(--border-color)');
+
+        // Switch views
+        viewSend.style.display = (tab === 'send' ? 'block' : 'none');
+        viewVerify.style.display = (tab === 'verify' ? 'block' : 'none');
+        viewDocs.style.display = (tab === 'docs' ? 'block' : 'none');
+
+        if (tab === 'docs' && typeof fetchOtpReports === 'function') {
+            fetchOtpReports();
+        }
+    }
+    </script>
+
+    <script src="/static/js/app.js?v=20261014_06"></script>
 </body>
 </html>
