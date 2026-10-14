@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>منصة إدارة حسابات WhatsApp Web المتعددة | FastAPI</title>
+    <!-- Google Font Cairo -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <nav class="navbar">
+        <div class="logo-area">
+            <div class="logo-icon">💬</div>
+            <div class="logo-title">
+                <h1>منصة واتساب ويب متعددة الحسابات</h1>
+                <p>إدارة وحفظ الجلسات والتحكم عبر REST API | مدعوم بـ FastAPI</p>
+            </div>
+        </div>
+        <div class="nav-actions">
+            <a href="/docs" target="_blank" class="btn btn-secondary">
+                📖 توثيق الـ API (Swagger)
+            </a>
+            <button class="btn btn-secondary" onclick="openBulkModal()">
+                📢 إرسال جماعي
+            </button>
+            <button class="btn btn-primary" onclick="openModal('modal-add-account')">
+                ➕ إضافة حساب جديد
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content Container -->
+    <main class="container">
+
+        <!-- Stats Overview Cards -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-info">
+                    <h3>إجمالي الحسابات</h3>
+                    <div class="stat-value" id="stat-total">0</div>
+                </div>
+                <div class="stat-icon total">👥</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-info">
+                    <h3>الحسابات المتصلة والجاهزة</h3>
+                    <div class="stat-value" id="stat-connected" style="color: #25d366;">0</div>
+                </div>
+                <div class="stat-icon connected">🟢</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-info">
+                    <h3>بانتظار مسح رمز QR</h3>
+                    <div class="stat-value" id="stat-waiting" style="color: #ffd700;">0</div>
+                </div>
+                <div class="stat-icon waiting">📷</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-info">
+                    <h3>جلسات متوقفة (محفوظة)</h3>
+                    <div class="stat-value" id="stat-offline">0</div>
+                </div>
+                <div class="stat-icon offline">⏸️</div>
+            </div>
+        </section>
+
+        <!-- Accounts Grid Section -->
+        <section>
+            <div class="section-header">
+                <h2 class="section-title">حسابات واتساب النشطة والمحفوظة</h2>
+                <button class="btn btn-secondary btn-sm" onclick="fetchSessions()">
+                    🔄 تحديث القائمة
+                </button>
+            </div>
+
+            <div id="sessions-grid" class="sessions-grid">
+                <!-- Dynamically populated cards -->
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" style="display: none; text-align: center; padding: 4rem 1rem; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px dashed var(--border-color);">
+                <div style="font-size: 3.5rem; margin-bottom: 1rem;">📱</div>
+                <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">لا توجد حسابات مضافة حتى الآن</h3>
+                <p style="color: var(--text-muted); margin-bottom: 1.5rem;">ابدأ بإضافة أول حساب واتساب لمسح رمز QR وحفظ جلسته تلقائياً</p>
+                <button class="btn btn-primary" onclick="openModal('modal-add-account')">
+                    ➕ إضافة حساب الآن
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal 1: Add Account -->
+    <div class="modal-overlay" id="modal-add-account">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>إضافة حساب واتساب جديد</h3>
+                <button class="modal-close" onclick="closeModal('modal-add-account')">&times;</button>
+            </div>
+            <form id="add-account-form">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="new-session-id">معرف الحساب الفريد (Session ID):</label>
+                        <input type="text" id="new-session-id" class="form-control" placeholder="مثال: support_team أو acc_sales" required pattern="^[a-zA-Z0-9_\-]+$" dir="ltr">
+                        <small style="color: var(--text-muted); font-size: 0.75rem;">يُستخدم في استدعاءات الـ API (حروف إنجليزية، أرقام، شرطة)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="new-session-name">الاسم التعريفي للحساب:</label>
+                        <input type="text" id="new-session-name" class="form-control" placeholder="مثال: خدمة العملاء السعودية" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="new-session-desc">الوصف (اختياري):</label>
+                        <input type="text" id="new-session-desc" class="form-control" placeholder="حساب مخصص للرد على استفسارات المبيعات">
+                    </div>
+
+                    <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="new-session-autostart" checked style="width: 18px; height: 18px; accent-color: var(--accent-color);">
+                        <label for="new-session-autostart" style="margin-bottom: 0; cursor: pointer;">تشغيل الجلسة فوراً لفتح رمز QR</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-account')">إلغاء</button>
+                    <button type="submit" class="btn btn-primary">حفظ وإنشاء الجلسة</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 2: QR Code Scan -->
+    <div class="modal-overlay" id="modal-qr">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="qr-session-title">ربط الحساب ومسح رمز QR</h3>
+                <button class="modal-close" onclick="closeModal('modal-qr')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="qr-container">
+                    <div class="qr-box" id="qr-box">
+                        <!-- QR Code Image or Spinner dynamically injected here -->
+                    </div>
+                    <div class="qr-instructions">
+                        <p><strong>طريقة الربط:</strong></p>
+                        <ol style="text-align: right; margin-right: 1.5rem; margin-top: 6px;">
+                            <li>افتح تطبيق <strong>WhatsApp</strong> على هاتفك المحمول.</li>
+                            <li>اضغط على <strong>القائمة (⋮)</strong> أو <strong>الإعدادات</strong>.</li>
+                            <li>اختر <strong>الأجهزة المرتبطة (Linked Devices)</strong>.</li>
+                            <li>اضغط على <strong>ربط جهاز (Link a Device)</strong> ووجّه الكاميرا نحو الرمز أعلاه.</li>
+                        </ol>
+                        <p style="margin-top: 10px; color: #25d366; font-size: 0.8rem;">
+                            🔒 سيتم حفظ الجلسة على الخادم ولن تحتاج لمسح الرمز مجدداً عند إعادة التشغيل.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="checkQrStatus()">🔄 تحديث الرمز</button>
+                <button type="button" class="btn btn-primary" onclick="closeModal('modal-qr')">تم / إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 3: Live Screenshot Preview -->
+    <div class="modal-overlay" id="modal-screenshot">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h3 id="screenshot-session-title">معاينة شاشة المتصفح المباشرة</h3>
+                <button class="modal-close" onclick="closeModal('modal-screenshot')">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align: center;">
+                <img id="live-screenshot-img" src="" alt="Live WhatsApp Web Screenshot" class="screenshot-preview">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="refreshCurrentScreenshot()">🔄 تحديث اللقطة</button>
+                <button type="button" class="btn btn-primary" onclick="closeModal('modal-screenshot')">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 4: Send Single Message -->
+    <div class="modal-overlay" id="modal-send">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>إرسال رسالة واتساب</h3>
+                <button class="modal-close" onclick="closeModal('modal-send')">&times;</button>
+            </div>
+            <form id="send-message-form">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="send-session-select">الحساب المرسل:</label>
+                        <select id="send-session-select" class="form-control" required>
+                            <option value="">-- اختر الحساب --</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="send-phone">رقم هاتف المستلم (مع المفتاح الدولي):</label>
+                        <input type="text" id="send-phone" class="form-control" placeholder="مثال: 966501234567 أو +9647701234567" required dir="ltr">
+                        <small style="color: var(--text-muted); font-size: 0.75rem;">تأكد من كتابة الرقم كاملاً مع كود الدولة وبدون أصفار إضافية</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="send-message">نص الرسالة:</label>
+                        <textarea id="send-message" class="form-control" placeholder="اكتب رسالتك هنا..." required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-send')">إلغاء</button>
+                    <button type="submit" class="btn btn-primary" id="btn-submit-send">إرسال الرسالة الآن</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 5: Bulk Messages -->
+    <div class="modal-overlay" id="modal-bulk">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h3>حملة إرسال رسائل جماعية عبر واتساب</h3>
+                <button class="modal-close" onclick="closeModal('modal-bulk')">&times;</button>
+            </div>
+            <form id="bulk-message-form">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="bulk-session-select">الحساب المرسل:</label>
+                        <select id="bulk-session-select" class="form-control" required>
+                            <option value="">-- اختر الحساب المتصل --</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="bulk-phones">أرقام الهواتف (رقم في كل سطر مع المفتاح الدولي):</label>
+                        <textarea id="bulk-phones" class="form-control" rows="5" placeholder="966500000001&#10;966500000002&#10;964770000003" required dir="ltr"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="bulk-message-text">نص الرسالة الموحدة:</label>
+                        <textarea id="bulk-message-text" class="form-control" rows="4" placeholder="مرحباً بكم! نود إعلامكم بتفاصيل العرض الجديد..." required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="bulk-delay">الفاصل الزمني بين كل رسالة والأخرى (بالثواني لحماية الحساب):</label>
+                        <input type="number" id="bulk-delay" class="form-control" value="4" min="2" max="60" required style="width: 120px;">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-bulk')">إلغاء</button>
+                    <button type="submit" class="btn btn-primary" id="btn-submit-bulk">بدء الحملة وإرسال الرسائل</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 6: API Docs & Code Generator -->
+    <div class="modal-overlay" id="modal-api">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h3>طريقة الربط البرمجي السريع عبر الـ API</h3>
+                <button class="modal-close" onclick="closeModal('modal-api')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px;">
+                    يمكنك إرسال الرسائل برمجياً من أي نظام أو لغة برمجة (Node.js, PHP, Python, C#, Laravel وغيرها) باستخدام طلب HTTP بسيط:
+                </p>
+
+                <h4 style="font-size: 0.95rem; margin-top: 1rem;">1. مثال عبر cURL (Terminal / Bash):</h4>
+                <div class="code-box" id="code-curl"></div>
+                <button class="btn btn-secondary btn-sm" style="margin-top: 6px;" onclick="copyCode('code-curl')">📋 نسخ كود cURL</button>
+
+                <h4 style="font-size: 0.95rem; margin-top: 1.5rem;">2. مثال عبر Python (Requests):</h4>
+                <div class="code-box" id="code-python"></div>
+                <button class="btn btn-secondary btn-sm" style="margin-top: 6px;" onclick="copyCode('code-python')">📋 نسخ كود Python</button>
+            </div>
+            <div class="modal-footer">
+                <a href="/docs" target="_blank" class="btn btn-secondary">صفحة التوثيق الكاملة Swagger</a>
+                <button type="button" class="btn btn-primary" onclick="closeModal('modal-api')">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container"></div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
