@@ -32,6 +32,7 @@ class DatabaseManager:
         self.is_connected: bool = False
         self.last_error: Optional[str] = None
         self.db_name: str = "whatsapp_manager"
+        self._memory_otp_verifications: Dict[str, Dict[str, Any]] = {}
 
     def _load_saved_uri(self) -> str:
         """Loads MongoDB URI from local config or falls back to default."""
@@ -221,6 +222,67 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"MongoDB get OTP reports error: {e}")
             return []
+
+    # Data Operations: OTP Verification Records
+    async def save_otp_verification(self, data: Dict[str, Any]):
+        request_id = data.get("request_id")
+        if not request_id:
+            return
+        # Store in-memory fallback
+        self._memory_otp_verifications[request_id] = {**data}
+
+        # Store in MongoDB if connected
+        if self.is_connected and self.db is not None:
+            try:
+                await self.db.otp_verifications.update_one(
+                    {"request_id": request_id},
+                    {"$set": {**data, "updated_at": datetime.now().isoformat()}},
+                    upsert=True,
+                )
+            except Exception as e:
+                logger.error(f"MongoDB save OTP verification error: {e}")
+
+    async def get_otp_verification(self, request_id: str) -> Optional[Dict[str, Any]]:
+        # Query MongoDB first if connected
+        if self.is_connected and self.db is not None:
+            try:
+                record = await self.db.otp_verifications.find_one({"request_id": request_id}, {"_id": 0})
+                if record:
+                    return record
+            except Exception as e:
+                logger.error(f"MongoDB get OTP verification error: {e}")
+        # Fallback to in-memory store
+        return self._memory_otp_verifications.get(request_id)
+
+    async def mark_otp_verified(self, request_id: str, verified_at: str) -> bool:
+        if request_id in self._memory_otp_verifications:
+            self._memory_otp_verifications[request_id]["status"] = "VERIFIED"
+            self._memory_otp_verifications[request_id]["verified_at"] = verified_at
+
+        if self.is_connected and self.db is not None:
+            try:
+                await self.db.otp_verifications.update_one(
+                    {"request_id": request_id},
+                    {"$set": {"status": "VERIFIED", "verified_at": verified_at, "updated_at": datetime.now().isoformat()}}
+                )
+            except Exception as e:
+                logger.error(f"MongoDB mark OTP verified error: {e}")
+        return True
+
+    async def increment_otp_attempt(self, request_id: str):
+        if request_id in self._memory_otp_verifications:
+            self._memory_otp_verifications[request_id]["attempts_count"] = (
+                self._memory_otp_verifications[request_id].get("attempts_count", 0) + 1
+            )
+
+        if self.is_connected and self.db is not None:
+            try:
+                await self.db.otp_verifications.update_one(
+                    {"request_id": request_id},
+                    {"$inc": {"attempts_count": 1}}
+                )
+            except Exception as e:
+                logger.error(f"MongoDB increment OTP attempt error: {e}")
 
 
 db_manager = DatabaseManager()

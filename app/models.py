@@ -83,11 +83,17 @@ class SendOtpRequest(BaseModel):
     )
     otp: Optional[str] = Field(
         None,
-        description="رمز التحقق (مثال: 123456). إذا لم يُحدد، يمكنك كتابة نص الرسالة كاملاً"
+        description="رمز التحقق (مثال: 123456). إذا تُرك فارغاً سيتم توليد رمز عشوائي من 6 أرقام تلقائياً"
     )
     message: Optional[str] = Field(
         None,
         description="نص الرسالة المخصص. إذا تُرك فارغاً سيتم استخدام القالب الافتراضي مع رمز الـ OTP"
+    )
+    expires_in_minutes: Optional[int] = Field(
+        5,
+        ge=1,
+        le=60,
+        description="مدة صلاحية رمز التحقق بالدقائق (افتراضياً 5 دقائق)"
     )
     account_priority: Optional[List[str]] = Field(
         None,
@@ -101,8 +107,23 @@ class OtpAttemptDetail(BaseModel):
     timestamp: str
 
 class SendOtpResponse(BaseModel):
+    request_id: str
     phone: str
+    otp: Optional[str] = None
     sent_by_account: Optional[str] = None
+    expires_in_seconds: int = 300
     attempts_count: int
     attempts: List[OtpAttemptDetail]
     message: str
+
+class VerifyOtpRequest(BaseModel):
+    request_id: str = Field(..., description="معرف الطلب المستلم عند إرسال الـ OTP (مثال: req_9f8a12b3)")
+    otp: str = Field(..., min_length=3, max_length=10, description="رمز الـ OTP المدخل من قبل المستخدم")
+
+class VerifyOtpResponse(BaseModel):
+    valid: bool
+    success: bool = True
+    request_id: str
+    phone: Optional[str] = None
+    message: str
+    verified_at: Optional[str] = None

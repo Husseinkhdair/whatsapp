@@ -361,56 +361,102 @@
     <div class="modal-overlay" id="modal-otp">
         <div class="modal modal-lg">
             <div class="modal-header">
-                <h3>🔐 بوابة إرسال OTP مع التبديل التلقائي (Smart Failover)</h3>
+                <h3>🔐 بوابة إرسال والتحقق من OTP الذكية (Smart OTP Gateway)</h3>
                 <button class="modal-close" onclick="closeModal('modal-otp')">&times;</button>
             </div>
-            <div class="modal-body" style="max-height: 550px; overflow-y: auto;">
-                <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 15px;">
-                    تقوم هذه البوابة بتجربة الحساب الأول لإرسال الـ OTP، وإذا فشل لأي سبب يسجل المشكلة وينتقل تلقائياً للحساب التالي حتى يصل الرمز للعميل!
-                </p>
-
-                <form id="otp-send-form">
-                    <div class="form-group">
-                        <label for="otp-phone">رقم هاتف المستلم (مع المفتاح الدولي):</label>
-                        <input type="text" id="otp-phone" class="form-control" placeholder="مثال: 966501234567 أو 9647701234567" required dir="ltr">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="otp-code">رمز التحقق (OTP Code):</label>
-                        <input type="text" id="otp-code" class="form-control" placeholder="مثال: 849201" required dir="ltr" style="font-size: 1.2rem; font-weight: 700; letter-spacing: 2px;">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="otp-custom-msg">نص الرسالة (اختياري - لتخصيص القالب):</label>
-                        <textarea id="otp-custom-msg" class="form-control" rows="2" placeholder="اتركه فارغاً ليتم استخدام القالب الافتراضي"></textarea>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary" id="btn-submit-otp" style="width: 100%; justify-content: center; background: #2563eb; padding: 12px;">
-                        ⚡ إرسال رمز الـ OTP الآن
+            <div class="modal-body" style="max-height: 580px; overflow-y: auto;">
+                <!-- Tab Buttons -->
+                <div style="display: flex; gap: 8px; margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                    <button type="button" class="btn btn-sm btn-primary" id="btn-tab-otp-send" onclick="switchOtpTab('send')">
+                        📤 إرسال وتوليد كود تلقائي
                     </button>
-                </form>
-
-                <!-- Live Failover Execution Results -->
-                <div id="otp-live-result" style="display: none; margin-top: 20px; padding: 15px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: var(--bg-card);">
-                    <!-- Dynamically populated -->
+                    <button type="button" class="btn btn-sm btn-secondary" id="btn-tab-otp-verify" onclick="switchOtpTab('verify')">
+                        🔍 اختبار التحقق (Verify OTP)
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" id="btn-tab-otp-docs" onclick="switchOtpTab('docs')">
+                        📜 الربط البرمجي والتقارير
+                    </button>
                 </div>
 
-                <!-- OTP API Integration Snippet -->
-                <div style="margin-top: 25px; border-top: 1px solid var(--border-color); padding-top: 15px;">
-                    <h4 style="font-size: 0.95rem; margin-bottom: 8px;">استدعاء الـ API من نظامك أو موقعك:</h4>
+                <!-- Tab 1: Send OTP -->
+                <div id="otp-view-send">
+                    <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 15px;">
+                        تقوم هذه البوابة بتوليد كود OTP عشوائي تلقائياً وحفظه في MongoDB، وإرساله عبر أول حساب واتساب متاح مع التبديل التلقائي إذا فشل أي حساب!
+                    </p>
+
+                    <form id="otp-send-form">
+                        <div class="form-group">
+                            <label for="otp-phone">رقم هاتف المستلم (مع المفتاح الدولي):</label>
+                            <input type="text" id="otp-phone" class="form-control" placeholder="مثال: 966501234567 أو 9647701234567" required dir="ltr">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="otp-code">رمز التحقق (OTP Code) <span style="color: var(--text-muted); font-size: 0.8rem;">(اختياري - اتركه فارغاً لتوليد كود عشوائي تلقائياً)</span>:</label>
+                            <input type="text" id="otp-code" class="form-control" placeholder="اتركه فارغاً للتوليد التلقائي (مثال: 849201)" dir="ltr" style="font-size: 1.1rem; font-weight: 700; letter-spacing: 2px;">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="otp-custom-msg">نص الرسالة (اختياري):</label>
+                            <textarea id="otp-custom-msg" class="form-control" rows="2" placeholder="اتركه فارغاً ليتم استخدام القالب الافتراضي مع رمز التحقق"></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" id="btn-submit-otp" style="width: 100%; justify-content: center; background: #2563eb; padding: 12px; font-weight: 600;">
+                            ⚡ إرسال وتوليد رمز الـ OTP الآن
+                        </button>
+                    </form>
+
+                    <!-- Live Execution Results -->
+                    <div id="otp-live-result" style="display: none; margin-top: 20px; padding: 15px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: var(--bg-card);">
+                    </div>
+                </div>
+
+                <!-- Tab 2: Verify OTP -->
+                <div id="otp-view-verify" style="display: none;">
+                    <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 15px;">
+                        أدخل معرّف الطلب (request_id) المستلم عند الإرسال، ورمز الـ OTP المدخل من قبل المستخدم لمطابقته في قاعدة البيانات.
+                    </p>
+
+                    <form id="otp-verify-form">
+                        <div class="form-group">
+                            <label for="verify-req-id">معرّف الطلب (Request ID):</label>
+                            <input type="text" id="verify-req-id" class="form-control" placeholder="مثال: req_1a2b3c4d5e6f" required dir="ltr" style="font-family: monospace;">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="verify-otp-input">رمز التحقق المدخل (OTP Code):</label>
+                            <input type="text" id="verify-otp-input" class="form-control" placeholder="أدخل كود الـ OTP المكون من 6 أرقام" required dir="ltr" style="font-size: 1.2rem; font-weight: 700; letter-spacing: 2px;">
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" id="btn-submit-verify" style="width: 100%; justify-content: center; background: #16a34a; padding: 12px; font-weight: 600;">
+                            🔍 التحقق من صحة الرمز الآن
+                        </button>
+                    </form>
+
+                    <!-- Live Verification Result -->
+                    <div id="otp-verify-live-result" style="display: none; margin-top: 20px; padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: var(--bg-card);">
+                    </div>
+                </div>
+
+                <!-- Tab 3: API Docs & Reports -->
+                <div id="otp-view-docs" style="display: none;">
+                    <h4 style="font-size: 0.95rem; margin-bottom: 8px;">1. إرسال وتوليد OTP برمجياً:</h4>
                     <div class="code-box" id="code-otp-curl"></div>
+                    <button class="btn btn-secondary btn-sm" style="margin-top: 6px;" onclick="copyCode('code-otp-curl')">📋 نسخ كود الإرسال</button>
+
+                    <h4 style="font-size: 0.95rem; margin-top: 1.25rem; margin-bottom: 8px;">2. التحقق من صحة الرمز برمجياً (يرجع valid: true/false):</h4>
+                    <div class="code-box" id="code-otp-verify-curl"></div>
+                    <button class="btn btn-secondary btn-sm" style="margin-top: 6px;" onclick="copyCode('code-otp-verify-curl')">📋 نسخ كود التحقق</button>
+
+                    <div style="margin-top: 25px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="font-size: 0.95rem;">📜 تقارير محاولات الـ OTP السابقة (MongoDB):</h4>
+                            <button class="btn btn-secondary btn-sm" onclick="fetchOtpReports()">🔄 تحديث</button>
+                        </div>
+                        <div id="otp-reports-table-container">
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Past Reports List -->
-                <div style="margin-top: 25px; border-top: 1px solid var(--border-color); padding-top: 15px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <h4 style="font-size: 0.95rem;">📜 تقارير محاولات الـ OTP السابقة:</h4>
-                        <button class="btn btn-secondary btn-sm" onclick="fetchOtpReports()">🔄 تحديث</button>
-                    </div>
-                    <div id="otp-reports-table-container">
-                        <!-- Populated dynamically -->
-                    </div>
-                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-primary" onclick="closeModal('modal-otp')">إغلاق</button>

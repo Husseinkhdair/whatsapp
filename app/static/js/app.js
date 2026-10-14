@@ -636,18 +636,61 @@ async function fetchMessageLogs() {
 }
 
 // Smart OTP Gateway Controllers
+function switchOtpTab(tab) {
+    const btnSend = document.getElementById("btn-tab-otp-send");
+    const btnVerify = document.getElementById("btn-tab-otp-verify");
+    const btnDocs = document.getElementById("btn-tab-otp-docs");
+
+    const viewSend = document.getElementById("otp-view-send");
+    const viewVerify = document.getElementById("otp-view-verify");
+    const viewDocs = document.getElementById("otp-view-docs");
+
+    // Reset buttons
+    btnSend.className = "btn btn-sm " + (tab === 'send' ? 'btn-primary' : 'btn-secondary');
+    btnVerify.className = "btn btn-sm " + (tab === 'verify' ? 'btn-primary' : 'btn-secondary');
+    btnDocs.className = "btn btn-sm " + (tab === 'docs' ? 'btn-primary' : 'btn-secondary');
+
+    // Switch views
+    viewSend.style.display = tab === 'send' ? 'block' : 'none';
+    viewVerify.style.display = tab === 'verify' ? 'block' : 'none';
+    viewDocs.style.display = tab === 'docs' ? 'block' : 'none';
+
+    if (tab === 'docs') {
+        fetchOtpReports();
+    }
+}
+
 function openOtpModal() {
     openModal("modal-otp");
-    // Generate cURL example
+    switchOtpTab('send');
+
     const origin = window.location.origin;
-    const curl = `curl -X POST "${origin}/api/otp/send" \\
+    // Example 1: Send / Auto generate
+    const curlSend = `curl -X POST "${origin}/api/otp/send" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "phone": "966500000000",
-    "otp": "849201"
+    "phone": "966500000000"
   }'`;
-    document.getElementById("code-otp-curl").innerText = curl;
-    fetchOtpReports();
+    const elemSend = document.getElementById("code-otp-curl");
+    if (elemSend) elemSend.innerText = curlSend;
+
+    // Example 2: Verify OTP
+    const curlVerify = `curl -X POST "${origin}/api/otp/verify" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "request_id": "req_a1b2c3d4e5f6",
+    "otp": "123456"
+  }'`;
+    const elemVerify = document.getElementById("code-otp-verify-curl");
+    if (elemVerify) elemVerify.innerText = curlVerify;
+}
+
+function testVerifyWith(requestId, otpCode) {
+    switchOtpTab('verify');
+    document.getElementById("verify-req-id").value = requestId || "";
+    document.getElementById("verify-otp-input").value = otpCode || "";
+    const resultBox = document.getElementById("otp-verify-live-result");
+    resultBox.style.display = "none";
 }
 
 document.getElementById("otp-send-form").addEventListener("submit", async (e) => {
@@ -669,10 +712,14 @@ document.getElementById("otp-send-form").addEventListener("submit", async (e) =>
     `;
 
     try {
+        const payload = { phone };
+        if (otp) payload.otp = otp;
+        if (message) payload.message = message;
+
         const res = await fetch("/api/otp/send", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ phone, otp, message: message || null })
+            body: JSON.stringify(payload)
         });
         const json = await res.json();
 
@@ -680,14 +727,41 @@ document.getElementById("otp-send-form").addEventListener("submit", async (e) =>
             const data = json.data;
             showToast("تم تسليم رمز الـ OTP بنجاح! 🎉", "success");
             resultBox.innerHTML = `
-                <div style="color:#25d366;font-weight:700;font-size:1rem;margin-bottom:8px;">
+                <div style="color:#25d366;font-weight:700;font-size:1rem;margin-bottom:10px;">
                     ✅ ${escapeHtml(json.message)}
                 </div>
-                <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:10px;">
-                    الحساب الذي تم الإرسال منه: <strong style="color:#fff;">${escapeHtml(data.sent_by_account)}</strong> | إجمالي المحاولات: <strong style="color:#fff;">${data.attempts_count}</strong>
+                
+                <!-- Request ID & Details Card -->
+                <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;padding:12px;margin-bottom:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span style="font-size:0.85rem;color:var(--text-muted);">معرّف الطلب (Request ID):</span>
+                        <code style="font-size:1rem;font-weight:700;color:#38bdf8;background:rgba(56,189,248,0.1);padding:3px 8px;border-radius:4px;">${escapeHtml(data.request_id)}</code>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span style="font-size:0.85rem;color:var(--text-muted);">رمز التحقق المولد (OTP):</span>
+                        <code style="font-size:1.1rem;font-weight:800;color:#eab308;letter-spacing:2px;">${escapeHtml(data.otp || '')}</code>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-size:0.85rem;color:var(--text-muted);">صلاحية الرمز:</span>
+                        <span style="font-size:0.85rem;color:#fff;">${Math.round(data.expires_in_seconds / 60)} دقائق (${data.expires_in_seconds} ثانية)</span>
+                    </div>
                 </div>
+
+                <div style="display:flex;gap:8px;margin-bottom:12px;">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="testVerifyWith('${escapeHtml(data.request_id)}', '${escapeHtml(data.otp || '')}')" style="background:#16a34a;flex:1;justify-content:center;">
+                        🔍 اختبار التحقق من هذا الرمز الآن
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('${escapeHtml(data.request_id)}');showToast('تم نسخ Request ID بنجاح!','success');">
+                        📋 نسخ Request ID
+                    </button>
+                </div>
+
+                <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:10px;">
+                    الحساب المرسل: <strong style="color:#fff;">${escapeHtml(data.sent_by_account)}</strong> | إجمالي المحاولات: <strong style="color:#fff;">${data.attempts_count}</strong>
+                </div>
+
                 <div style="border-top:1px solid var(--border-color);padding-top:8px;">
-                    <strong style="font-size:0.8rem;color:#8696a0;">سجل المحاولات:</strong>
+                    <strong style="font-size:0.8rem;color:#8696a0;">سجل محاولات التبديل التلقائي:</strong>
                     <div style="margin-top:5px;font-size:0.82rem;display:flex;flex-direction:column;gap:4px;">
                         ${data.attempts.map((att, idx) => `
                             <div style="display:flex;justify-content:space-between;background:var(--bg-primary);padding:6px 10px;border-radius:4px;">
@@ -700,7 +774,6 @@ document.getElementById("otp-send-form").addEventListener("submit", async (e) =>
                     </div>
                 </div>
             `;
-            fetchOtpReports();
         } else {
             const data = json.data || { attempts: [] };
             showToast("فشلت جميع المحاولات", "error");
@@ -723,7 +796,97 @@ document.getElementById("otp-send-form").addEventListener("submit", async (e) =>
         resultBox.innerHTML = `<div style="color:#ef4444;">تعذر الاتصال بالسيرفر.</div>`;
     } finally {
         btn.disabled = false;
-        btn.innerText = "⚡ إرسال رمز الـ OTP الآن";
+        btn.innerText = "⚡ إرسال وتوليد رمز الـ OTP الآن";
+    }
+});
+
+// Verify OTP Event Listener
+document.getElementById("otp-verify-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const requestId = document.getElementById("verify-req-id").value.trim();
+    const otp = document.getElementById("verify-otp-input").value.trim();
+    const btn = document.getElementById("btn-submit-verify");
+    const resultBox = document.getElementById("otp-verify-live-result");
+
+    btn.disabled = true;
+    btn.innerText = "⏳ جاري التحقق من الرمز في MongoDB...";
+    resultBox.style.display = "block";
+    resultBox.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;color:#34b7f1;">
+            <span style="font-size:1.4rem;animation:spin 1s linear infinite;">🔄</span>
+            <span>جاري مطابقة الرمز في قاعدة البيانات...</span>
+        </div>
+    `;
+
+    try {
+        const res = await fetch("/api/otp/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ request_id: requestId, otp: otp })
+        });
+        const data = await res.json();
+
+        if (data.valid) {
+            showToast("تم التحقق بنجاح! الرمز صحيح (valid: true) ✅", "success");
+            resultBox.innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+                    <div style="font-size:2rem;line-height:1;">✅</div>
+                    <div>
+                        <div style="color:#25d366;font-size:1.15rem;font-weight:800;">
+                            رمز التحقق صحيح ومطابق!
+                        </div>
+                        <div style="color:var(--text-muted);font-size:0.85rem;">
+                            النتيجة المرجعة للـ API: <code style="color:#25d366;font-weight:700;">valid: true</code>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background:var(--bg-primary);border:1px solid rgba(37,211,102,0.3);border-radius:6px;padding:12px;font-size:0.85rem;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                        <span style="color:var(--text-muted);">معرّف الطلب:</span>
+                        <code>${escapeHtml(data.request_id)}</code>
+                    </div>
+                    ${data.phone ? `
+                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                        <span style="color:var(--text-muted);">رقم الهاتف:</span>
+                        <span style="direction:ltr;font-weight:600;">${escapeHtml(data.phone)}</span>
+                    </div>` : ''}
+                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                        <span style="color:var(--text-muted);">حالة التوثيق:</span>
+                        <span style="color:#25d366;font-weight:700;">مُعتمد ومُسجل في قاعدة البيانات</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;">
+                        <span style="color:var(--text-muted);">وقت التوثيق:</span>
+                        <span>${data.verified_at ? new Date(data.verified_at).toLocaleTimeString('ar-EG') : 'الآن'}</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            showToast("فشل التحقق: الرمز غير مطابق (valid: false) ❌", "error");
+            resultBox.innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+                    <div style="font-size:2rem;line-height:1;">❌</div>
+                    <div>
+                        <div style="color:#ef4444;font-size:1.15rem;font-weight:800;">
+                            فشل التحقق من الرمز
+                        </div>
+                        <div style="color:var(--text-muted);font-size:0.85rem;">
+                            النتيجة المرجعة للـ API: <code style="color:#ef4444;font-weight:700;">valid: false</code>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px;padding:12px;font-size:0.88rem;color:#fca5a5;">
+                    <strong>السبب:</strong> ${escapeHtml(data.message || 'رمز التحقق غير صحيح أو منتهي الصلاحية')}
+                </div>
+            `;
+        }
+    } catch (err) {
+        showToast("خطأ أثناء الاتصال بالسيرفر", "error");
+        resultBox.innerHTML = `<div style="color:#ef4444;">تعذر الاتصال بالسيرفر للتحقق.</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "🔍 التحقق من صحة الرمز الآن";
     }
 });
 
@@ -740,6 +903,7 @@ async function fetchOtpReports() {
                 <table style="width:100%;border-collapse:collapse;font-size:0.82rem;text-align:right;">
                     <thead>
                         <tr style="border-bottom:1px solid var(--border-color);color:var(--text-muted);">
+                            <th style="padding:8px;">معرّف الطلب</th>
                             <th style="padding:8px;">المستلم</th>
                             <th style="padding:8px;">الرمز</th>
                             <th style="padding:8px;">الحساب الناجح</th>
@@ -751,6 +915,7 @@ async function fetchOtpReports() {
                     <tbody>
                         ${json.data.map(rep => `
                             <tr style="border-bottom:1px solid var(--border-color);">
+                                <td style="padding:8px;font-family:monospace;color:#38bdf8;">${escapeHtml(rep.request_id || '-')}</td>
                                 <td style="padding:8px;direction:ltr;text-align:right;">${escapeHtml(rep.phone || '')}</td>
                                 <td style="padding:8px;font-weight:700;color:#ffd700;">${escapeHtml(rep.otp_code || '-')}</td>
                                 <td style="padding:8px;font-family:monospace;color:#34b7f1;">${escapeHtml(rep.sent_by_account || 'لا يوجد')}</td>
