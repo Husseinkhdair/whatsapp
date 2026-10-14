@@ -16,6 +16,7 @@ SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_HEADLESS = os.getenv("WHATSAPP_HEADLESS", "true").lower() in ("true", "1", "yes")
 SERVER_HOST = os.getenv("HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("PORT", "8000"))
+AUTO_SLEEP_SECONDS = int(os.getenv("AUTO_SLEEP_SECONDS", "45"))
 
 # WhatsApp Web Configuration
 WHATSAPP_WEB_URL = "https://web.whatsapp.com"

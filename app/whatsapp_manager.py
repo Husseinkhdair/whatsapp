@@ -31,6 +31,7 @@ from app.config import (
     DEFAULT_HEADLESS,
     WHATSAPP_WEB_URL,
     PLAYWRIGHT_ARGS,
+    AUTO_SLEEP_SECONDS,
     get_session_user_agent,
 )
 from app.models import SessionStatusEnum
@@ -72,8 +73,27 @@ class WhatsAppSession:
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
         self._monitor_task: Optional[asyncio.Task] = None
+        self._idle_task: Optional[asyncio.Task] = None
         self._send_lock = asyncio.Lock()
         self._is_closing = False
+
+    def _reset_idle_sleep(self):
+        """Schedule automatic shutdown of Chromium if idle to free 100% RAM."""
+        if self._idle_task and not self._idle_task.done():
+            self._idle_task.cancel()
+        if AUTO_SLEEP_SECONDS > 0:
+            self._idle_task = asyncio.create_task(self._auto_sleep_worker())
+
+    async def _auto_sleep_worker(self):
+        try:
+            await asyncio.sleep(AUTO_SLEEP_SECONDS)
+            if self.is_running and not self._send_lock.locked():
+                logger.info(f"Session {self.session_id} has been idle for {AUTO_SLEEP_SECONDS}s. Sleeping browser to release RAM...")
+                await self.stop()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug(f"Auto-sleep worker error: {e}")
 
     @property
     def is_running(self) -> bool:
@@ -161,6 +181,9 @@ class WhatsAppSession:
         self._is_closing = True
         logger.info(f"Stopping session {self.session_id}...")
 
+        if self._idle_task and not self._idle_task.done():
+            self._idle_task.cancel()
+
         if self._monitor_task and not self._monitor_task.done():
             self._monitor_task.cancel()
             try:
@@ -225,6 +248,8 @@ class WhatsAppSession:
                             await db_manager.save_session_meta(self.to_dict())
                         except Exception as sync_err:
                             logger.debug(f"MongoDB session backup error: {sync_err}")
+                        # Start idle sleep countdown so browser doesn't stay open wasting RAM
+                        self._reset_idle_sleep()
 
                     await asyncio.sleep(3)
                     continue
@@ -331,9 +356,26 @@ class WhatsAppSession:
         return await self._page.screenshot(full_page=False)
 
     async def send_message(self, phone: str, message: str) -> Dict[str, Any]:
-        """Send a WhatsApp message to a specific phone number."""
+        """Send a WhatsApp message on-demand (wakes up browser if asleep, sleeps after)."""
+        # Auto-wake if browser is currently stopped to save RAM
+        if not self.is_running:
+            if not self.has_saved_session:
+                raise RuntimeError(
+                    f"الحساب '{self.session_id}' لم يتم مسح رمز QR له بعد. يرجى مسح رمز QR لربطه أولاً."
+                )
+            logger.info(f"Session {self.session_id} is asleep. Waking up on-demand for API request...")
+            started = await self.start()
+            if not started:
+                raise RuntimeError(f"فشل إيقاظ متصفح الجلسة: {self.error_message}")
+
+            # Wait until CONNECTED (max 25s)
+            for _ in range(25):
+                if self.status == SessionStatusEnum.CONNECTED:
+                    break
+                await asyncio.sleep(1)
+
         if self.status != SessionStatusEnum.CONNECTED:
-            raise RuntimeError(f"Session is not connected (current status: {self.status}). Please scan QR code first.")
+            raise RuntimeError(f"الحساب غير متصل حالياً (الحالة: {self.status}). يرجى التحقق من اتصال الهاتف.")
 
         clean_phone = re.sub(r"\D", "", phone)
         if len(clean_phone) < 7:
@@ -434,6 +476,9 @@ class WhatsAppSession:
                 except Exception:
                     pass
                 raise
+            finally:
+                # Reset idle timer to sleep browser after sending to release RAM!
+                self._reset_idle_sleep()
 
 
 class WhatsAppManager:

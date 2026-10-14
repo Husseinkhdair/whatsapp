@@ -90,7 +90,10 @@ function renderSessions(sessions) {
             "ERROR": { text: "خطأ", icon: "❌", class: "ERROR" }
         };
 
-        const statusInfo = statusMap[session.status] || { text: session.status, icon: "❓", class: "OFFLINE" };
+        let statusInfo = statusMap[session.status] || { text: session.status, icon: "❓", class: "OFFLINE" };
+        if (session.status === "OFFLINE" && session.has_saved_session) {
+            statusInfo = { text: "جاهز للـ API (0% RAM) ⚡", icon: "💤", class: "CONNECTED" };
+        }
         const phone = session.phone_number ? `+${session.phone_number}` : "غير معروف";
 
         return `
@@ -118,20 +121,20 @@ function renderSessions(sessions) {
                         <div class="detail-row">
                             <span class="detail-label">الجلسة المحفوظة:</span>
                             <span class="detail-val" style="color: ${session.has_saved_session ? '#25d366' : '#8696a0'}">
-                                ${session.has_saved_session ? 'نعم (دخول تلقائي)' : 'جديدة'}
+                                ${session.has_saved_session ? 'نعم (ربط دائم)' : 'جديدة'}
                             </span>
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">المتصفح:</span>
-                            <span class="detail-val">${session.is_running ? 'يعمل في الخلفية' : 'متوقف'}</span>
+                            <span class="detail-val">${session.is_running ? 'يعمل حالياً' : 'نائم (توفير 100% RAM)'}</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="card-actions">
                     ${!session.is_running ? `
-                        <button class="btn btn-primary btn-sm" onclick="startSession('${session.session_id}')">
-                            ▶️ تشغيل الجلسة
+                        <button class="btn btn-secondary btn-sm" onclick="startSession('${session.session_id}')">
+                            ▶️ تشغيل
                         </button>
                     ` : `
                         <button class="btn btn-secondary btn-sm" onclick="stopSession('${session.session_id}')">
@@ -145,7 +148,7 @@ function renderSessions(sessions) {
                         </button>
                     ` : ''}
 
-                    ${session.status === 'CONNECTED' ? `
+                    ${session.status === 'CONNECTED' || session.has_saved_session ? `
                         <button class="btn btn-primary btn-sm" onclick="openSendModal('${session.session_id}')">
                             💬 إرسال رسالة
                         </button>
@@ -176,10 +179,10 @@ function populateAccountSelects(sessions) {
         if (!sel) return;
         const currentVal = sel.value;
         sel.innerHTML = '<option value="">-- اختر حساب الواتساب --</option>';
-        sessions.filter(s => s.status === "CONNECTED").forEach(s => {
+        sessions.filter(s => s.status === "CONNECTED" || s.has_saved_session).forEach(s => {
             const opt = document.createElement("option");
             opt.value = s.session_id;
-            opt.innerText = `${s.name} (${s.session_id})`;
+            opt.innerText = `${s.name} (${s.session_id}) - ${s.is_running ? 'نشط' : 'جاهز للـ API'}`;
             if (s.session_id === currentVal) opt.selected = true;
             sel.appendChild(opt);
         });

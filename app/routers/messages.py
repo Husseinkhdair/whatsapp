@@ -29,16 +29,10 @@ async def send_single_message(session_id: str, request: SendMessageRequest):
     if not session:
         raise HTTPException(status_code=404, detail=f"الحساب '{session_id}' غير موجود.")
 
-    if not session.is_running:
+    if not session.is_running and not session.has_saved_session:
         raise HTTPException(
             status_code=400,
-            detail="الجلسة غير مشغلة. يرجى تشغيل الجلسة وتسجيل الدخول أولاً.",
-        )
-
-    if session.status != "CONNECTED":
-        raise HTTPException(
-            status_code=400,
-            detail=f"الحساب غير متصل حالياً (الحالة: {session.status}). يرجى مسح رمز QR أولاً.",
+            detail=f"الحساب '{session_id}' لم يتم ربطه بواتساب بعد. يرجى مسح رمز QR لربطه أولاً.",
         )
 
     try:
@@ -67,10 +61,10 @@ async def send_bulk_messages(session_id: str, request: BulkMessageRequest):
     if not session:
         raise HTTPException(status_code=404, detail=f"الحساب '{session_id}' غير موجود.")
 
-    if session.status != "CONNECTED":
+    if not session.is_running and not session.has_saved_session:
         raise HTTPException(
             status_code=400,
-            detail=f"الحساب غير متصل حالياً (الحالة: {session.status}).",
+            detail=f"الحساب '{session_id}' لم يتم ربطه بواتساب بعد. يرجى مسح رمز QR لربطه أولاً.",
         )
 
     results = []
