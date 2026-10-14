@@ -18,6 +18,8 @@ SERVER_HOST = os.getenv("HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("PORT", "8000"))
 
 # WhatsApp Web Configuration
+WHATSAPP_WEB_URL = "https://web.whatsapp.com"
+
 def get_session_user_agent(session_id: str) -> str:
     """Generate a realistic, distinct User-Agent per session to prevent device collision."""
     # Deterministic minor version variation based on session_id
