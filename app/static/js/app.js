@@ -634,3 +634,142 @@ async function fetchMessageLogs() {
         container.innerHTML = `<div style="text-align:center;padding:30px;color:#ef4444;">تعذر جلب السجل (تأكد من اتصال MongoDB).</div>`;
     }
 }
+
+// Smart OTP Gateway Controllers
+function openOtpModal() {
+    openModal("modal-otp");
+    // Generate cURL example
+    const origin = window.location.origin;
+    const curl = `curl -X POST "${origin}/api/otp/send" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "966500000000",
+    "otp": "849201"
+  }'`;
+    document.getElementById("code-otp-curl").innerText = curl;
+    fetchOtpReports();
+}
+
+document.getElementById("otp-send-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const phone = document.getElementById("otp-phone").value.trim();
+    const otp = document.getElementById("otp-code").value.trim();
+    const message = document.getElementById("otp-custom-msg").value.trim();
+    const btn = document.getElementById("btn-submit-otp");
+    const resultBox = document.getElementById("otp-live-result");
+
+    btn.disabled = true;
+    btn.innerText = "⏳ جاري الإرسال وتجربة الحسابات بالتتابع...";
+    resultBox.style.display = "block";
+    resultBox.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;color:#34b7f1;">
+            <span style="font-size:1.4rem;animation:spin 1s linear infinite;">🔄</span>
+            <span>جاري فحص الحسابات وإرسال رمز التحقق...</span>
+        </div>
+    `;
+
+    try {
+        const res = await fetch("/api/otp/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone, otp, message: message || null })
+        });
+        const json = await res.json();
+
+        if (json.success) {
+            const data = json.data;
+            showToast("تم تسليم رمز الـ OTP بنجاح! 🎉", "success");
+            resultBox.innerHTML = `
+                <div style="color:#25d366;font-weight:700;font-size:1rem;margin-bottom:8px;">
+                    ✅ ${escapeHtml(json.message)}
+                </div>
+                <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:10px;">
+                    الحساب الذي تم الإرسال منه: <strong style="color:#fff;">${escapeHtml(data.sent_by_account)}</strong> | إجمالي المحاولات: <strong style="color:#fff;">${data.attempts_count}</strong>
+                </div>
+                <div style="border-top:1px solid var(--border-color);padding-top:8px;">
+                    <strong style="font-size:0.8rem;color:#8696a0;">سجل المحاولات:</strong>
+                    <div style="margin-top:5px;font-size:0.82rem;display:flex;flex-direction:column;gap:4px;">
+                        ${data.attempts.map((att, idx) => `
+                            <div style="display:flex;justify-content:space-between;background:var(--bg-primary);padding:6px 10px;border-radius:4px;">
+                                <span>محاولة #${idx + 1} (${escapeHtml(att.account_id)}):</span>
+                                <span style="color:${att.status === 'SUCCESS' ? '#25d366' : '#ef4444'};">
+                                    ${att.status === 'SUCCESS' ? '✓ تم الإرسال بنجاح' : '✗ فشل: ' + escapeHtml(att.error || '')}
+                                </span>
+                            </div>
+                        `).join("")}
+                    </div>
+                </div>
+            `;
+            fetchOtpReports();
+        } else {
+            const data = json.data || { attempts: [] };
+            showToast("فشلت جميع المحاولات", "error");
+            resultBox.innerHTML = `
+                <div style="color:#ef4444;font-weight:700;font-size:1rem;margin-bottom:8px;">
+                    ❌ ${escapeHtml(json.message)}
+                </div>
+                <div style="margin-top:8px;font-size:0.82rem;display:flex;flex-direction:column;gap:4px;">
+                    ${(data.attempts || []).map((att, idx) => `
+                        <div style="display:flex;justify-content:space-between;background:rgba(239,68,68,0.1);padding:6px 10px;border-radius:4px;">
+                            <span>حساب (${escapeHtml(att.account_id)}):</span>
+                            <span style="color:#ef4444;">${escapeHtml(att.error || 'فشل الاتصال')}</span>
+                        </div>
+                    `).join("")}
+                </div>
+            `;
+        }
+    } catch (err) {
+        showToast("خطأ أثناء الاتصال بالسيرفر", "error");
+        resultBox.innerHTML = `<div style="color:#ef4444;">تعذر الاتصال بالسيرفر.</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "⚡ إرسال رمز الـ OTP الآن";
+    }
+});
+
+async function fetchOtpReports() {
+    const container = document.getElementById("otp-reports-table-container");
+    if (!container) return;
+    container.innerHTML = `<div style="text-align:center;padding:15px;color:#8696a0;font-size:0.85rem;">جاري تحميل التقارير...</div>`;
+
+    try {
+        const res = await fetch("/api/otp/reports");
+        const json = await res.json();
+        if (json.success && json.data.length > 0) {
+            container.innerHTML = `
+                <table style="width:100%;border-collapse:collapse;font-size:0.82rem;text-align:right;">
+                    <thead>
+                        <tr style="border-bottom:1px solid var(--border-color);color:var(--text-muted);">
+                            <th style="padding:8px;">المستلم</th>
+                            <th style="padding:8px;">الرمز</th>
+                            <th style="padding:8px;">الحساب الناجح</th>
+                            <th style="padding:8px;">المحاولات</th>
+                            <th style="padding:8px;">الحالة</th>
+                            <th style="padding:8px;">الوقت</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${json.data.map(rep => `
+                            <tr style="border-bottom:1px solid var(--border-color);">
+                                <td style="padding:8px;direction:ltr;text-align:right;">${escapeHtml(rep.phone || '')}</td>
+                                <td style="padding:8px;font-weight:700;color:#ffd700;">${escapeHtml(rep.otp_code || '-')}</td>
+                                <td style="padding:8px;font-family:monospace;color:#34b7f1;">${escapeHtml(rep.sent_by_account || 'لا يوجد')}</td>
+                                <td style="padding:8px;">${rep.total_attempts || 1}</td>
+                                <td style="padding:8px;">
+                                    <span style="color:${rep.success ? '#25d366' : '#ef4444'};font-weight:700;">
+                                        ${rep.success ? '✓ ناجح' : '✗ فشل'}
+                                    </span>
+                                </td>
+                                <td style="padding:8px;color:var(--text-muted);font-size:0.75rem;">${new Date(rep.created_at).toLocaleTimeString('ar-EG')}</td>
+                            </tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+            `;
+        } else {
+            container.innerHTML = `<div style="text-align:center;padding:20px;color:#8696a0;font-size:0.85rem;">لا توجد تقارير OTP سابقة بعد.</div>`;
+        }
+    } catch (e) {
+        container.innerHTML = `<div style="text-align:center;padding:15px;color:#ef4444;font-size:0.85rem;">تعذر جلب التقارير.</div>`;
+    }
+}

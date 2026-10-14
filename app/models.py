@@ -73,3 +73,36 @@ class ApiResponse(BaseModel):
     success: bool
     message: str
     data: Optional[Any] = None
+
+class SendOtpRequest(BaseModel):
+    phone: str = Field(
+        ...,
+        min_length=7,
+        max_length=25,
+        description="رقم هاتف المستلم مع المفتاح الدولي"
+    )
+    otp: Optional[str] = Field(
+        None,
+        description="رمز التحقق (مثال: 123456). إذا لم يُحدد، يمكنك كتابة نص الرسالة كاملاً"
+    )
+    message: Optional[str] = Field(
+        None,
+        description="نص الرسالة المخصص. إذا تُرك فارغاً سيتم استخدام القالب الافتراضي مع رمز الـ OTP"
+    )
+    account_priority: Optional[List[str]] = Field(
+        None,
+        description="ترتيب أولوية الحسابات المراد المحاولة بها. إذا تُركت فارغة، سيتم تجربة جميع الحسابات الجاهزة تلقائياً"
+    )
+
+class OtpAttemptDetail(BaseModel):
+    account_id: str
+    status: str
+    error: Optional[str] = None
+    timestamp: str
+
+class SendOtpResponse(BaseModel):
+    phone: str
+    sent_by_account: Optional[str] = None
+    attempts_count: int
+    attempts: List[OtpAttemptDetail]
+    message: str

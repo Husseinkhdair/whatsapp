@@ -200,5 +200,27 @@ class DatabaseManager:
             logger.error(f"MongoDB get logs error: {e}")
             return []
 
+    # Data Operations: Smart OTP Failover Reports
+    async def log_otp_report(self, report_entry: Dict[str, Any]):
+        if not self.is_connected or self.db is None:
+            return
+        try:
+            await self.db.otp_reports.insert_one({
+                **report_entry,
+                "created_at": datetime.now().isoformat(),
+            })
+        except Exception as e:
+            logger.error(f"MongoDB log OTP report error: {e}")
+
+    async def get_otp_reports(self, limit: int = 50) -> List[Dict[str, Any]]:
+        if not self.is_connected or self.db is None:
+            return []
+        try:
+            cursor = self.db.otp_reports.find({}, {"_id": 0}).sort("created_at", -1).limit(limit)
+            return await cursor.to_list(length=limit)
+        except Exception as e:
+            logger.error(f"MongoDB get OTP reports error: {e}")
+            return []
+
 
 db_manager = DatabaseManager()

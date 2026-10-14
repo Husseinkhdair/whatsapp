@@ -12,6 +12,7 @@ from app.config import SERVER_HOST, SERVER_PORT
 from app.routers.sessions import router as sessions_router
 from app.routers.messages import router as messages_router
 from app.routers.settings import router as settings_router
+from app.routers.otp import router as otp_router
 from app.whatsapp_manager import whatsapp_manager
 from app.database import db_manager
 
@@ -64,6 +65,7 @@ app.add_middleware(
 app.include_router(sessions_router)
 app.include_router(messages_router)
 app.include_router(settings_router)
+app.include_router(otp_router)
 
 # Mount Static Files (Frontend UI)
 STATIC_DIR = Path(__file__).resolve().parent / "app" / "static"
