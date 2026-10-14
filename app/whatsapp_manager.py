@@ -34,6 +34,7 @@ from app.config import (
     PLAYWRIGHT_ARGS,
 )
 from app.models import SessionStatusEnum
+from app.database import db_manager
 
 logger = logging.getLogger("whatsapp_manager")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -204,6 +205,14 @@ class WhatsAppSession:
                         self.last_active = datetime.now().isoformat()
                         # Try to detect profile info
                         await self._detect_profile_info()
+                        # Save session state & metadata to MongoDB
+                        try:
+                            if self._context:
+                                state_dict = await self._context.storage_state()
+                                await db_manager.save_storage_state(self.session_id, state_dict)
+                            await db_manager.save_session_meta(self.to_dict())
+                        except Exception as sync_err:
+                            logger.debug(f"MongoDB session backup error: {sync_err}")
 
                     await asyncio.sleep(3)
                     continue
@@ -364,16 +373,35 @@ class WhatsAppSession:
                 await asyncio.sleep(2)
                 self.last_active = datetime.now().isoformat()
 
-                return {
+                result = {
                     "session_id": self.session_id,
                     "phone": clean_phone,
                     "status": "SENT",
                     "timestamp": datetime.now().isoformat(),
                     "message": message,
                 }
+                # Log message in MongoDB
+                try:
+                    await db_manager.log_message(result)
+                except Exception as log_err:
+                    logger.debug(f"MongoDB log message error: {log_err}")
+
+                return result
 
             except Exception as e:
                 logger.error(f"Error sending message in session {self.session_id} to {clean_phone}: {e}")
+                # Log failed attempt
+                try:
+                    await db_manager.log_message({
+                        "session_id": self.session_id,
+                        "phone": clean_phone,
+                        "status": "FAILED",
+                        "timestamp": datetime.now().isoformat(),
+                        "message": message,
+                        "error": str(e),
+                    })
+                except Exception:
+                    pass
                 raise
 
 
@@ -446,6 +474,8 @@ class WhatsAppManager:
         self.sessions[session_id] = session
         self.save_metadata()
         logger.info(f"Created new session record '{session_id}'.")
+        # Save to MongoDB
+        asyncio.create_task(db_manager.save_session_meta(session.to_dict()))
         return session
 
     async def delete_session(self, session_id: str) -> bool:
@@ -464,6 +494,8 @@ class WhatsAppManager:
         # Remove from dictionary and save
         del self.sessions[session_id]
         self.save_metadata()
+        # Delete from MongoDB
+        await db_manager.delete_session_meta(session_id)
         logger.info(f"Deleted session '{session_id}' and all associated persistent data.")
         return True
 

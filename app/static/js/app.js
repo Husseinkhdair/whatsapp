@@ -8,6 +8,7 @@ let autoRefreshTimer = null;
 document.addEventListener("DOMContentLoaded", () => {
     fetchSessions();
     fetchStats();
+    fetchDbStatus();
     // Auto-refresh sessions state every 4 seconds
     autoRefreshTimer = setInterval(fetchSessions, 4000);
 });
@@ -478,4 +479,139 @@ function escapeHtml(text) {
     const div = document.createElement("div");
     div.innerText = text;
     return div.innerHTML;
+}
+
+// MongoDB Database Controllers
+let currentDbData = null;
+
+async function fetchDbStatus() {
+    try {
+        const res = await fetch("/api/database/status");
+        const json = await res.json();
+        if (json.success) {
+            currentDbData = json.data;
+            updateDbNavbarBadge(json.data.is_connected);
+        }
+    } catch (e) {
+        console.error("DB status fetch error:", e);
+    }
+}
+
+function updateDbNavbarBadge(isConnected) {
+    const dot = document.getElementById("db-status-dot");
+    const btn = document.getElementById("btn-db-status");
+    if (!dot || !btn) return;
+
+    if (isConnected) {
+        dot.innerText = "🟢";
+        btn.title = "MongoDB متصل بنجاح";
+    } else {
+        dot.innerText = "🔴";
+        btn.title = "MongoDB غير متصل (اضغط لتعديل الرابط)";
+    }
+}
+
+async function openDbModal() {
+    await fetchDbStatus();
+    const banner = document.getElementById("db-status-banner");
+    const input = document.getElementById("mongo-uri-input");
+
+    if (currentDbData) {
+        input.value = currentDbData.raw_uri || "";
+        if (currentDbData.is_connected) {
+            banner.style.background = "rgba(37, 211, 102, 0.15)";
+            banner.style.border = "1px solid rgba(37, 211, 102, 0.3)";
+            banner.style.color = "#25d366";
+            banner.innerHTML = "<span>🟢</span><span><strong>متصل بنجاح:</strong> قاعدة البيانات جاهزة وتعمل على حفظ البيانات وسجلات الرسائل.</span>";
+        } else {
+            banner.style.background = "rgba(239, 68, 68, 0.15)";
+            banner.style.border = "1px solid rgba(239, 68, 68, 0.3)";
+            banner.style.color = "#ef4444";
+            const err = currentDbData.last_error ? `(${currentDbData.last_error})` : "";
+            banner.innerHTML = `<span>⚠️</span><span><strong>غير متصل:</strong> يرجى التحقق من صحة الرابط أو كلمة المرور أو صلاحيات IP في Atlas ${err}</span>`;
+        }
+    }
+
+    openModal("modal-db");
+}
+
+document.getElementById("db-settings-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const uri = document.getElementById("mongo-uri-input").value.trim();
+    const btn = document.getElementById("btn-save-db");
+
+    btn.disabled = true;
+    btn.innerText = "جاري اختبار الاتصال...";
+
+    try {
+        const res = await fetch("/api/database/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mongo_uri: uri })
+        });
+        const json = await res.json();
+        if (json.success) {
+            showToast("تم الاتصال بقاعدة البيانات وحفظ الإعدادات بنجاح! 🎉", "success");
+            closeModal("modal-db");
+            fetchDbStatus();
+        } else {
+            showToast(json.detail || "فشل الاتصال بقاعدة البيانات", "error");
+            openDbModal();
+        }
+    } catch (err) {
+        showToast("خطأ أثناء الاتصال بالخادم", "error");
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "💾 اختبار وتحديث الرابط";
+    }
+});
+
+// Message Logs Modal
+async function openLogsModal() {
+    openModal("modal-logs");
+    fetchMessageLogs();
+}
+
+async function fetchMessageLogs() {
+    const container = document.getElementById("logs-table-container");
+    container.innerHTML = `<div style="text-align:center;padding:30px;color:#8696a0;">جاري تحميل سجل الرسائل...</div>`;
+
+    try {
+        const res = await fetch("/api/database/logs");
+        const json = await res.json();
+        if (json.success && json.data.length > 0) {
+            container.innerHTML = `
+                <table style="width:100%;border-collapse:collapse;font-size:0.85rem;text-align:right;">
+                    <thead>
+                        <tr style="border-bottom:1px solid var(--border-color);color:var(--text-muted);">
+                            <th style="padding:10px;">الحساب</th>
+                            <th style="padding:10px;">المستلم</th>
+                            <th style="padding:10px;">الرسالة</th>
+                            <th style="padding:10px;">الحالة</th>
+                            <th style="padding:10px;">الوقت</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${json.data.map(log => `
+                            <tr style="border-bottom:1px solid var(--border-color);">
+                                <td style="padding:10px;font-family:monospace;">${escapeHtml(log.session_id || '')}</td>
+                                <td style="padding:10px;direction:ltr;text-align:right;">${escapeHtml(log.phone || '')}</td>
+                                <td style="padding:10px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(log.message || '')}</td>
+                                <td style="padding:10px;">
+                                    <span style="color:${log.status === 'SENT' ? '#25d366' : '#ef4444'};font-weight:700;">
+                                        ${log.status === 'SENT' ? '✓ تم الإرسال' : '✗ فشل'}
+                                    </span>
+                                </td>
+                                <td style="padding:10px;color:var(--text-muted);font-size:0.75rem;">${new Date(log.created_at).toLocaleString('ar-EG')}</td>
+                            </tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+            `;
+        } else {
+            container.innerHTML = `<div style="text-align:center;padding:40px;color:#8696a0;">لا توجد رسائل مسجلة في السجل حتى الآن.</div>`;
+        }
+    } catch (e) {
+        container.innerHTML = `<div style="text-align:center;padding:30px;color:#ef4444;">تعذر جلب السجل (تأكد من اتصال MongoDB).</div>`;
+    }
 }

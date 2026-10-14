@@ -11,7 +11,9 @@ from fastapi.staticfiles import StaticFiles
 from app.config import SERVER_HOST, SERVER_PORT
 from app.routers.sessions import router as sessions_router
 from app.routers.messages import router as messages_router
+from app.routers.settings import router as settings_router
 from app.whatsapp_manager import whatsapp_manager
+from app.database import db_manager
 
 
 import sys
@@ -25,10 +27,13 @@ if hasattr(sys.stderr, "reconfigure"):
 async def lifespan(app: FastAPI):
     # Startup actions
     print("[INFO] WhatsApp Web Multi-Account Manager API is starting...")
+    # Initialize MongoDB in background
+    asyncio.create_task(db_manager.connect())
     yield
-    # Shutdown actions: Cleanly close any running browsers
+    # Shutdown actions: Cleanly close any running browsers & DB
     print("[INFO] Shutting down browser sessions safely...")
     await whatsapp_manager.shutdown()
+    await db_manager.disconnect()
 
 
 app = FastAPI(
@@ -36,10 +41,11 @@ app = FastAPI(
     description="""
     نظام متكامل لإدارة عدة حسابات واتساب ويب (WhatsApp Web) في نفس الوقت:
     * **حفظ الجلسات تلقائياً**: لا حاجة لمسح رمز QR في كل مرة بعد تسجيل الدخول.
+    * **ربط بقاعدة بيانات MongoDB**: لحفظ الحسابات وسجلات الرسائل والجلسات سحابياً.
     * **واجهة تحكم ويب متطورة**: لعرض الحسابات وحالاتها ومسح QR وإرسال الرسائل.
-    * **RESTful API شامل**: لإنشاء الحسابات، التحقق من الاتصال، التقاط صورة للشاشة، وإرسال الرسائل الفردية والجماعية.
+    * **RESTful API شامل**: لإنشاء الحسابات، التحقق من الاتصال، التقاط صورة للشاشة، وإرسال الرسائل.
     """,
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -57,6 +63,7 @@ app.add_middleware(
 # Register API Routers
 app.include_router(sessions_router)
 app.include_router(messages_router)
+app.include_router(settings_router)
 
 # Mount Static Files (Frontend UI)
 STATIC_DIR = Path(__file__).resolve().parent / "app" / "static"
